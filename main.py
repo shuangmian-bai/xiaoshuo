@@ -7,176 +7,127 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-#获取小说所有内容
-def get_text(url1):
+def get_text(url):
+    """获取小说所有内容"""
     re_data = ''
-
-    url1 = url1.split('.html')[0]
-    cache = url1+'_{n}.html'
+    base_url = url.split('.html')[0]
+    page_url = f"{base_url}_{{n}}.html"
 
     n = 1
     while True:
-        url1 = cache.replace('{n}',str(n))
+        current_url = page_url.format(n=n)
+        response = requests.get(current_url, headers=HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-        req = requests.get(url1, headers=head)
-        soup = BeautifulSoup(req.text, 'html.parser')
+        title = soup.select_one('#container > div.row.row-detail.row-reader > div > div.reader-main > h1').text
+        content = soup.select_one('#content').text
+        content = content.replace('  ', '\n').replace(' ', '')
 
-        ti = soup.select('#container > div.row.row-detail.row-reader > div > div.reader-main > h1')[0].text
+        re_data += content
 
-        cache2 = soup.select('#content')[0].text
-        cache2 = cache2.replace('  ', '\n')
-
-        cache2 = cache2.replace(' ', '')
-
-        re_data += cache2
-
-        if cache2.find('本章未完') == -1:
+        if '本章未完' not in content:
             break
 
         n += 1
 
-    re_data = re_data.replace('本章未完，点击下一页继续阅读','')
+    re_data = re_data.replace('本章未完，点击下一页继续阅读', '')
+    return {'小说内容': re_data, '小说标题': title}
 
-    datas = {
-        '小说内容': re_data,
-        '小说标题': ti
-    }
+def get_chapters(book_url):
+    """获取指定小说的每一章节"""
+    response = requests.get(book_url, headers=HEADERS)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    chapter_urls = []
 
-    return datas
+    options = soup.select('#indexselect option')
+    chapter_urls = [f"{URL}{option['value']}" for option in options]
 
-
-
-#获取指定小说的每一章节
-def get_chapter(datas):
-    req = requests.get(datas['小说地址'],headers=head)
-    soup = BeautifulSoup(req.text, 'html.parser')
-    re_data = []
-
-    data_list = soup.select('#indexselect')[0].select('option')
-    data_list = [url+i.get('value') for i in data_list]
-
-    sj = {
-
-    }
-
-    time.sleep(2)
-
-    n = 0
-    for i in data_list:
-        print(f'----------正在获取第{n}页所有章节----------')
-        n += 1
-        req = requests.get(i,headers=head)
-        soup = BeautifulSoup(req.text, 'html.parser')
-
-        a = soup.select('.section-list.fix')[1].select('a')
-        cache = {url+j.get('href'):j.text for j in a}
-        sj.update(cache)
+    chapters = {}
+    for idx, chapter_url in enumerate(chapter_urls, start=1):
+        print(f'----------正在获取第{idx}页所有章节----------')
+        response = requests.get(chapter_url, headers=HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = soup.select('.section-list.fix')[1].select('a')
+        chapters.update({f"{URL}{link['href']}": link.text for link in links})
 
     print('--------------所有章节地址获取完成----------------')
-    return sj
+    return chapters
 
-#获取每本书的信息
 def get_book_info(soup):
-    data_list = []
+    """获取每本书的信息"""
+    books = []
+    items = soup.select('.txt-list.txt-list-row5 li')[1:]
 
-
-    root = soup.select('.txt-list.txt-list-row5')[0].select('li')[1:]
-
-    for i in root:
-        data = {
-
+    for item in items:
+        book = {
+            '小说类型': item.select_one('.s1').text,
+            '小说主角': item.select_one('.s4').text,
+            '最新章节': item.select_one('.s3 a').text,
+            '小说书名': item.select_one('.s2 a').text,
+            '更新时间': item.select_one('.s5').text,
+            '小说地址': f"{URL}{item.select_one('.s3 a')['href']}"
         }
+        books.append(book)
+    return books
 
-        types = i.select('.s1')[0].text
-        zj = i.select('.s4')[0].text
-        zuixin = i.select('.s3')[0].select('a')[0].text
-        name = i.select('.s2')[0].select('a')[0].text
-        gxrq = i.select('.s5')[0].text
-        path = url+i.select('.s3')[0].select('a')[0].get('href')
-
-        data['小说类型'] = types
-        data['小说主角'] = zj
-        data['最新章节'] = zuixin
-        data['小说书名'] = name
-        data['更新时间'] = gxrq
-        data['小说地址'] = path
-
-        data_list.append(data)
-    return data_list
-
-def main(url, head, data):
+def main(url, headers, search_data):
+    """主函数，执行爬虫逻辑"""
     try:
-        uri = '/search/'
-        response = requests.post(url+uri, data=data, headers=head)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        datas_list = get_book_info(soup)
+        search_response = requests.post(f"{url}/search/", data=search_data, headers=headers)
+        search_soup = BeautifulSoup(search_response.text, 'html.parser')
+        books = get_book_info(search_soup)
 
-        a = 0
-        for datas in datas_list:
+        for idx, book in enumerate(books):
             print('-----------------------------------')
-            for i in datas:
-                if i == '小说地址':
+            for key, value in book.items():
+                if key == '小说地址':
                     continue
-                print(f"{i} : {datas[i]}")
-            print(f'选择序号 : {a}')
-            a += 1
+                print(f"{key} : {value}")
+            print(f'选择序号 : {idx}')
             print('-----------------------------------')
-        a = int(input('请输入您要爬取的小说序号 : '))
-        datas = datas_list[a]
-        name = datas['小说书名']
 
-        datas = get_chapter(datas)
+        selected_book_idx = int(input('请输入您要爬取的小说序号 : '))
+        selected_book = books[selected_book_idx]
+        book_name = selected_book['小说书名']
+        chapters = get_chapters(selected_book['小说地址'])
 
-        quchu = [' ','、','/']
-        for j in datas:
-            bt = datas[j]
-            root_file_path = dow_path.format(name=name)
-            file_path = root_file_path.replace('.text', '/{name}.text')
-            file_path = file_path.format(name=bt)
-            os.makedirs(file_path[:file_path.rfind('/')], exist_ok=True)
+        for chapter_url, chapter_title in chapters.items():
+            clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+            file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
             if os.path.exists(file_path):
                 print(f'文件已存在 : {file_path}')
                 continue
-            text = get_text(j)
 
-
-
-            for n in quchu:
-                bt = bt.replace(n, '_')
-
-            print(f'--------------正在爬取{bt}----------------')
+            chapter_content = get_text(chapter_url)
+            print(f'--------------正在爬取{chapter_title}----------------')
             with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(text['小说内容'])
-
-
+                f.write(chapter_content['小说内容'])
 
     except requests.RequestException as e:
         print(f"请求失败: {e}")
 
-
 def get_config():
+    """读取配置文件"""
     config = configparser.ConfigParser()
     config.read('init.ini', encoding='utf-8')
-    dow_path = config['Paths']['dow_path']
-    search_type = config['Paths']['search_type'].split(';')[0].strip()
-    search_type = int(search_type)
-    return dow_path, search_type
+    download_path = config['Paths']['dow_path']
+    search_type = int(config['Paths']['search_type'].split(';')[0].strip())
+    return download_path, search_type
 
-
-def prepare_data(search_type):
-    type_list = ['articlename', 'authorname']
-    data = {
-        'type': type_list[search_type],
-        'searchkey': ''
+def prepare_search_data(search_type):
+    """准备搜索数据"""
+    search_types = ['articlename', 'authorname']
+    search_data = {
+        'type': search_types[search_type],
+        'searchkey': input('请输入搜索信息: ')
     }
-    name = input('请输入搜索信息: ')
-    data['searchkey'] = name
-    return data
-
+    return search_data
 
 if __name__ == '__main__':
-    url = 'https://www.xbqg06.com'
-    head = {
+    URL = 'https://www.xbqg06.com'
+    HEADERS = {
         'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'accept-language': 'zh-CN,zh;q=0.9',
         'cache-control': 'max-age=0',
@@ -195,7 +146,7 @@ if __name__ == '__main__':
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0',
     }
 
-    dow_path, search_type = get_config()
-    data = prepare_data(search_type)
+    DOWNLOAD_PATH, SEARCH_TYPE = get_config()
+    SEARCH_DATA = prepare_search_data(SEARCH_TYPE)
 
-    main(url, head, data)
+    main(URL, HEADERS, SEARCH_DATA)

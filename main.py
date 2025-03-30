@@ -97,32 +97,42 @@ def main(url, headers, search_data, concurrency):
         book_name = selected_book['小说书名']
         chapters = get_chapters(selected_book['小说地址'])
 
-        n = concurrency  # 使用从配置文件中读取的并发数
-        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
-            futures = []
-            for chapter_url in chapters:
-                futures.append(executor.submit(fetch_chapter, chapter_url))
-                time.sleep(10)  # 在每个任务提交后暂停 10 秒
+        chapter_urls = list(chapters.keys())
+        num_chapters = len(chapter_urls)
+        num_groups = (num_chapters + concurrency - 1) // concurrency  # 计算需要分成多少组
 
-            for future in concurrent.futures.as_completed(futures):
-                chapter_url = [chapter_url for chapter_url, f in zip(chapters, futures) if f == future][0]
-                try:
-                    chapter_content = future.result()
-                    chapter_title = chapters[chapter_url]
-                    clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
-                    file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        for group in range(num_groups):
+            start_idx = group * concurrency
+            end_idx = min(start_idx + concurrency, num_chapters)
+            group_urls = chapter_urls[start_idx:end_idx]
 
-                    if os.path.exists(file_path):
-                        print(f'文件已存在 : {file_path}')
-                        continue
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = []
+                for chapter_url in group_urls:
+                    futures.append(executor.submit(fetch_chapter, chapter_url))
 
-                    print(f'--------------正在爬取{chapter_title}----------------')
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(chapter_content['小说内容'])
-                except Exception as exc:
-                    print(f'{chapter_url} 生成内容时发生错误: {exc}')
+                for future in concurrent.futures.as_completed(futures):
+                    chapter_url = [chapter_url for chapter_url, f in zip(group_urls, futures) if f == future][0]
+                    try:
+                        chapter_content = future.result()
+                        chapter_title = chapters[chapter_url]
+                        clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+                        file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
+                        if os.path.exists(file_path):
+                            print(f'文件已存在 : {file_path}')
+                            continue
+
+                        print(f'--------------正在爬取{chapter_title}----------------')
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(chapter_content['小说内容'])
+                    except Exception as exc:
+                        print(f'{chapter_url} 生成内容时发生错误: {exc}')
+
+            td = 5
+            print(f'--------------第{group + 1}组下载完成，等待{td}秒后继续--------------')
+            time.sleep(td)  # 在每个任务提交后暂停 td 秒
     except requests.RequestException as e:
         print(f"请求失败: {e}")
 

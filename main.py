@@ -55,6 +55,10 @@ def get_chapter(datas):
     data_list = soup.select('#indexselect')[0].select('option')
     data_list = [url+i.get('value') for i in data_list]
 
+    sj = {
+
+    }
+
     time.sleep(2)
 
     n = 0
@@ -65,10 +69,11 @@ def get_chapter(datas):
         soup = BeautifulSoup(req.text, 'html.parser')
 
         a = soup.select('.section-list.fix')[1].select('a')
-        cache = [url+j.get('href') for j in a]
-        re_data += cache
+        cache = {url+j.get('href'):j.text for j in a}
+        sj.update(cache)
 
-    return re_data
+    print('--------------所有章节地址获取完成----------------')
+    return sj
 
 #获取每本书的信息
 def get_book_info(soup):
@@ -118,20 +123,27 @@ def main(url, head, data):
             print('-----------------------------------')
         a = int(input('请输入您要爬取的小说序号 : '))
         datas = datas_list[a]
+        name = datas['小说书名']
 
         datas = get_chapter(datas)
 
         quchu = [' ','、','/']
-        os.makedirs(dow_path[:dow_path.rfind('/')],exist_ok=True)
         for j in datas:
+            bt = datas[j]
+            root_file_path = dow_path.format(name=name)
+            file_path = root_file_path.replace('.text', '/{name}.text')
+            file_path = file_path.format(name=bt)
+            os.makedirs(file_path[:file_path.rfind('/')], exist_ok=True)
+            if os.path.exists(file_path):
+                print(f'文件已存在 : {file_path}')
+                continue
             text = get_text(j)
-            bt = text['小说标题']
+
 
 
             for n in quchu:
                 bt = bt.replace(n, '_')
 
-            file_path = dow_path.format(name=bt)
             print(f'--------------正在爬取{bt}----------------')
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(text['小说内容'])

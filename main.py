@@ -3,6 +3,7 @@
 import configparser
 import os
 import time
+import concurrent.futures
 
 import requests
 from bs4 import BeautifulSoup
@@ -70,7 +71,12 @@ def get_book_info(soup):
         books.append(book)
     return books
 
-def main(url, headers, search_data):
+def fetch_chapter(chapter_url):
+    """获取单个章节的内容"""
+    chapter_content = get_text(chapter_url)
+    return chapter_content
+
+def main(url, headers, search_data, concurrency):
     """主函数，执行爬虫逻辑"""
     try:
         search_response = requests.post(f"{url}/search/", data=search_data, headers=headers)
@@ -91,19 +97,27 @@ def main(url, headers, search_data):
         book_name = selected_book['小说书名']
         chapters = get_chapters(selected_book['小说地址'])
 
-        for chapter_url, chapter_title in chapters.items():
-            clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
-            file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        n = concurrency  # 使用从配置文件中读取的并发数
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
+            future_to_url = {executor.submit(fetch_chapter, chapter_url): chapter_url for chapter_url in chapters}
+            for future in concurrent.futures.as_completed(future_to_url):
+                chapter_url = future_to_url[future]
+                try:
+                    chapter_content = future.result()
+                    chapter_title = chapters[chapter_url]
+                    clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+                    file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-            if os.path.exists(file_path):
-                print(f'文件已存在 : {file_path}')
-                continue
+                    if os.path.exists(file_path):
+                        print(f'文件已存在 : {file_path}')
+                        continue
 
-            chapter_content = get_text(chapter_url)
-            print(f'--------------正在爬取{chapter_title}----------------')
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(chapter_content['小说内容'])
+                    print(f'--------------正在爬取{chapter_title}----------------')
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(chapter_content['小说内容'])
+                except Exception as exc:
+                    print(f'{chapter_url} 生成内容时发生错误: {exc}')
 
     except requests.RequestException as e:
         print(f"请求失败: {e}")
@@ -114,7 +128,8 @@ def get_config():
     config.read('init.ini', encoding='utf-8')
     download_path = config['Paths']['dow_path']
     search_type = int(config['Paths']['search_type'].split(';')[0].strip())
-    return download_path, search_type
+    concurrency = int(config['Paths']['concurrency'].strip())  # 读取并发数配置
+    return download_path, search_type, concurrency
 
 def prepare_search_data(search_type):
     """准备搜索数据"""
@@ -146,7 +161,7 @@ if __name__ == '__main__':
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0',
     }
 
-    DOWNLOAD_PATH, SEARCH_TYPE = get_config()
+    DOWNLOAD_PATH, SEARCH_TYPE, CONCURRENCY = get_config()
     SEARCH_DATA = prepare_search_data(SEARCH_TYPE)
 
-    main(URL, HEADERS, SEARCH_DATA)
+    main(URL, HEADERS, SEARCH_DATA, CONCURRENCY)

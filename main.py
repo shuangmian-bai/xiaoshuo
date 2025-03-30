@@ -99,9 +99,13 @@ def main(url, headers, search_data, concurrency):
 
         n = concurrency  # 使用从配置文件中读取的并发数
         with concurrent.futures.ThreadPoolExecutor(max_workers=n) as executor:
-            future_to_url = {executor.submit(fetch_chapter, chapter_url): chapter_url for chapter_url in chapters}
-            for future in concurrent.futures.as_completed(future_to_url):
-                chapter_url = future_to_url[future]
+            futures = []
+            for chapter_url in chapters:
+                futures.append(executor.submit(fetch_chapter, chapter_url))
+                time.sleep(10)  # 在每个任务提交后暂停 10 秒
+
+            for future in concurrent.futures.as_completed(futures):
+                chapter_url = [chapter_url for chapter_url, f in zip(chapters, futures) if f == future][0]
                 try:
                     chapter_content = future.result()
                     chapter_title = chapters[chapter_url]

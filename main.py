@@ -109,6 +109,15 @@ def main(url, headers, search_data, concurrency):
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futures = []
                 for chapter_url in group_urls:
+                    chapter_title = chapters[chapter_url]
+                    clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+                    file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+                    if os.path.exists(file_path):
+                        print(f'文件已存在 : {file_path}')
+                        continue
+
                     futures.append(executor.submit(fetch_chapter, chapter_url))
 
                 for future in concurrent.futures.as_completed(futures):
@@ -119,10 +128,6 @@ def main(url, headers, search_data, concurrency):
                         clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
                         file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-                        if os.path.exists(file_path):
-                            print(f'文件已存在 : {file_path}')
-                            continue
 
                         print(f'--------------正在爬取{chapter_title}----------------')
                         with open(file_path, 'w', encoding='utf-8') as f:

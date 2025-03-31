@@ -119,6 +119,7 @@ def main(url, headers, search_data, concurrency):
             all_files_exist = True
             for chapter_url in group_urls:
                 chapter_title = chapters[chapter_url]
+                chapter_title,chapter_url = chapter_url, chapter_title
                 clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
                 file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
                 if not os.path.exists(file_path):
@@ -159,11 +160,14 @@ def main(url, headers, search_data, concurrency):
                     except Exception as exc:
                         print(f'{chapter_url} 生成内容时发生错误: {exc}')
 
-            td = 5
-            print(f'--------------第{group + 1}组下载完成，等待{td}秒后继续--------------')
-            time.sleep(td)  # 在每个任务提交后暂停 td 秒
+            if not all_files_exist:  # 只有在该组内存在未下载的文件时才停顿
+                td = 5
+                print(f'--------------第{group + 1}组下载完成，等待{td}秒后继续--------------')
+                time.sleep(td)  # 在每个任务提交后暂停 td 秒
     except requests.RequestException as e:
         print(f"请求失败: {e}")
+
+
 
 
 def get_config():

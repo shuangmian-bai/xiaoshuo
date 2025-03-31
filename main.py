@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import configparser
 import os
 import time
@@ -35,40 +33,68 @@ def get_text(url):
     re_data = re_data.replace('本章未完，点击下一页继续阅读', '')
     return {'小说内容': re_data, '小说标题': title}
 
+def fetch_chapter_links(chapter_url, start_n):
+    """获取单个章节页的所有章节链接"""
+    response = requests.get(chapter_url, headers=HEADERS)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    links = soup.select('.section-list.fix')[1].select('a')
+    chapters = {}
+    n = start_n
+    for link in links:
+        nam = link.text
+        pt = URL + link['href']
+        if pt in chapters.values():
+            url2 = pt
+            while True:
+                cache = requests.get(url2, headers=HEADERS)
+                soup = BeautifulSoup(cache.text, 'html.parser')
+                cache1 = URL + soup.select('#next_url')[0].get('href')
+                cache2 = URL + soup.select('#next_url')[0].get('href').split('_')[0] + '.html'
+
+                if cache2 != pt:
+                    pt = cache1
+                    break
+                else:
+                    url2 = cache1
+        chapters[f'第{n}章节__{nam}'] = pt
+        n += 1
+    return chapters
+
 def get_chapters(book_url):
     """获取指定小说的每一章节"""
     response = requests.get(book_url, headers=HEADERS)
     soup = BeautifulSoup(response.text, 'html.parser')
-    chapter_urls = []
-
-    options = soup.select('#indexselect option')
-    chapter_urls = [f"{URL}{option['value']}" for option in options]
+    chapter_urls = [f"{URL}{option['value']}" for option in soup.select('#indexselect option')]
 
     chapters = {}
     n = 1
-    for idx, chapter_url in enumerate(chapter_urls, start=1):
-        print(f'----------正在获取第{idx}页所有章节----------')
-        response = requests.get(chapter_url, headers=HEADERS)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        links = soup.select('.section-list.fix')[1].select('a')
-        for i in links:
-            nam = i.text
-            pt = URL+i['href']
-            if pt in chapters.values():
-                url2 = pt
-                while True:
-                    cache = requests.get(url2, headers=HEADERS)
-                    soup = BeautifulSoup(cache.text, 'html.parser')
-                    cache1 = URL+soup.select('#next_url')[0].get('href')
-                    cache2 = URL+soup.select('#next_url')[0].get('href').split('_')[0]+'.html'
 
-                    if cache2 != pt:
-                        pt = cache1
-                        break
-                    else:
-                        url2 = cache1
-            chapters[f'第{n}章节__'+nam] = pt
-            n += 1
+    # 每concurrency页一个并发
+    concurrency = 3
+    num_chapters = len(chapter_urls)
+    num_groups = (num_chapters + concurrency - 1) // concurrency  # 计算需要分成多少组
+
+    for group in range(num_groups):
+        start_idx = group * concurrency
+        end_idx = min(start_idx + concurrency, num_chapters)
+        group_urls = chapter_urls[start_idx:end_idx]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = []
+            for chapter_url in group_urls:
+                print(f'----------正在获取第{n}页所有章节----------')
+                futures.append(executor.submit(fetch_chapter_links, chapter_url, n))
+                n += len(soup.select('.section-list.fix')[1].select('a'))
+
+            # 等待当前组的所有任务完成
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    chapters.update(future.result())
+                except Exception as exc:
+                    print(f'获取章节链接时发生错误: {exc}')
+
+        print('--------------当前组章节地址获取完成，等待5秒后开始下一组----------------')
+        time.sleep(5)  # 等待5秒再开始下一组
 
     print('--------------所有章节地址获取完成----------------')
     return chapters
@@ -176,9 +202,6 @@ def main(url, headers, search_data, concurrency):
                 time.sleep(td)  # 在每个任务提交后暂停 td 秒
     except requests.RequestException as e:
         print(f"请求失败: {e}")
-
-
-
 
 def get_config():
     """读取配置文件"""

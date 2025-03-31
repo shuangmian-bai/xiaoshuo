@@ -5,6 +5,7 @@ import os
 import time
 import concurrent.futures
 
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
@@ -49,7 +50,10 @@ def get_chapters(book_url):
         response = requests.get(chapter_url, headers=HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
         links = soup.select('.section-list.fix')[1].select('a')
-        chapters.update({f"{URL}{link['href']}": link.text for link in links})
+        for i in links:
+            nam = i.text
+            pt = URL+i['href']
+            chapters[nam] = pt
 
     print('--------------所有章节地址获取完成----------------')
     return chapters
@@ -122,9 +126,10 @@ def main(url, headers, search_data, concurrency):
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futures = []
-                for chapter_url in group_urls:
-                    chapter_title = chapters[chapter_url]
+                for chapter_title in group_urls:
+                    chapter_url = chapters[chapter_title]
                     clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+
                     file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -139,10 +144,10 @@ def main(url, headers, search_data, concurrency):
                     try:
                         chapter_content = future.result()
                         chapter_title = chapters[chapter_url]
+                        chapter_title, chapter_url = chapter_url, chapter_title
                         clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
                         file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
                         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
                         print(f'--------------正在爬取{chapter_title}----------------')
                         with open(file_path, 'w', encoding='utf-8') as f:
                             f.write(chapter_content['小说内容'])

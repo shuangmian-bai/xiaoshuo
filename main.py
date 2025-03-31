@@ -55,8 +55,18 @@ def get_chapters(book_url):
             nam = i.text
             pt = URL+i['href']
             if pt in chapters.values():
-                print(pt,nam)
+                url2 = pt
+                while True:
+                    cache = requests.get(url2, headers=HEADERS)
+                    soup = BeautifulSoup(cache.text, 'html.parser')
+                    cache1 = URL+soup.select('#next_url')[0].get('href')
+                    cache2 = URL+soup.select('#next_url')[0].get('href').split('_')[0]+'.html'
 
+                    if cache2 != pt:
+                        pt = cache1
+                        break
+                    else:
+                        url2 = cache1
             chapters[f'第{n}章节__'+nam] = pt
             n += 1
 

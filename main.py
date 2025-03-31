@@ -106,6 +106,20 @@ def main(url, headers, search_data, concurrency):
             end_idx = min(start_idx + concurrency, num_chapters)
             group_urls = chapter_urls[start_idx:end_idx]
 
+            # 检查该组内的所有文件是否存在
+            all_files_exist = True
+            for chapter_url in group_urls:
+                chapter_title = chapters[chapter_url]
+                clean_title = ''.join(c if c.isalnum() or c in '_ ' else '_' for c in chapter_title)
+                file_path = os.path.join(DOWNLOAD_PATH, book_name, f"{clean_title}.txt")
+                if not os.path.exists(file_path):
+                    all_files_exist = False
+                    break
+
+            if all_files_exist:
+                print('--------------该组内所有文件已存在，跳过下载--------------')
+                continue
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futures = []
                 for chapter_url in group_urls:
@@ -140,6 +154,7 @@ def main(url, headers, search_data, concurrency):
             time.sleep(td)  # 在每个任务提交后暂停 td 秒
     except requests.RequestException as e:
         print(f"请求失败: {e}")
+
 
 def get_config():
     """读取配置文件"""

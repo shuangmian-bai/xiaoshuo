@@ -45,6 +45,7 @@ def get_chapters(book_url):
     chapter_urls = [f"{URL}{option['value']}" for option in options]
 
     chapters = {}
+    n = 1
     for idx, chapter_url in enumerate(chapter_urls, start=1):
         print(f'----------正在获取第{idx}页所有章节----------')
         response = requests.get(chapter_url, headers=HEADERS)
@@ -53,7 +54,8 @@ def get_chapters(book_url):
         for i in links:
             nam = i.text
             pt = URL+i['href']
-            chapters[nam] = pt
+            chapters[f'第{n}章节__'+nam] = pt
+            n += 1
 
     print('--------------所有章节地址获取完成----------------')
     return chapters

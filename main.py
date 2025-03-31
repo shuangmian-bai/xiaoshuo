@@ -54,6 +54,9 @@ def get_chapters(book_url):
         for i in links:
             nam = i.text
             pt = URL+i['href']
+            if pt in chapters.values():
+                print(pt,nam)
+
             chapters[f'第{n}章节__'+nam] = pt
             n += 1
 
